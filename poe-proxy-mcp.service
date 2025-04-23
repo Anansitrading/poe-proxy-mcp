@@ -1,0 +1,19 @@
+[Unit]
+Description=Poe Proxy MCP Server
+After=network.target
+
+[Service]
+Type=simple
+User=<USER>
+WorkingDirectory=/path/to/poe-proxy-mcp
+Environment="POE_API_KEY=your_api_key_here"
+Environment="CLAUDE_COMPATIBLE=true"
+Environment="DEBUG_MODE=false"
+ExecStart=/path/to/poe-proxy-mcp/venv/bin/python /path/to/poe-proxy-mcp/run_sse_server.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
