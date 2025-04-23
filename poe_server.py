@@ -30,6 +30,10 @@ from poe_client import (
     is_text_file,
     read_file_content,
     create_temp_file,
+    format_thinking_protocol,
+    process_claude_response,
+    handle_claude_error,
+    is_claude_model,
 )
 
 # Initialize logging and configuration
@@ -40,7 +44,11 @@ logger = setup_logging(config.debug_mode)
 mcp = FastMCP("Poe Proxy MCP Server")
 
 # Initialize Poe API client and session manager
-poe_client = PoeClient(api_key=config.poe_api_key, debug_mode=config.debug_mode)
+poe_client = PoeClient(
+    api_key=config.poe_api_key,
+    debug_mode=config.debug_mode,
+    claude_compatible=config.claude_compatible,
+)
 session_manager = SessionManager(expiry_minutes=config.session_expiry_minutes)
 
 
@@ -83,6 +91,10 @@ class FileShareRequest(BaseModel):
     session_id: Optional[str] = Field(
         default=None,
         description="Optional session ID for maintaining conversation context"
+    )
+    thinking: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional parameters for Claude's thinking protocol"
     )
 
 
@@ -134,6 +146,7 @@ async def ask_poe(
             prompt=prompt,
             messages=messages,
             stream_handler=stream_handler,
+            thinking=thinking,
         )
         
         # Update session with the new messages
@@ -142,6 +155,14 @@ async def ask_poe(
             user_message=prompt,
             bot_message=response["text"],
         )
+        
+        # Check if there was an error but we still got a partial response
+        if "error" in response:
+            return {
+                "text": response["text"],
+                "session_id": current_session_id,
+                "warning": response["error_message"],
+            }
         
         return {
             "text": response["text"],
@@ -200,6 +221,7 @@ async def ask_with_attachment(
             file_path=attachment_path,
             messages=messages,
             stream_handler=stream_handler,
+            thinking=thinking,
         )
         
         # Update session with the new messages
@@ -208,6 +230,14 @@ async def ask_with_attachment(
             user_message=f"{prompt} [File: {os.path.basename(attachment_path)}]",
             bot_message=response["text"],
         )
+        
+        # Check if there was an error but we still got a partial response
+        if "error" in response:
+            return {
+                "text": response["text"],
+                "session_id": current_session_id,
+                "warning": response["error_message"],
+            }
         
         return {
             "text": response["text"],
@@ -269,6 +299,7 @@ def list_available_models() -> Dict[str, List[Dict[str, Any]]]:
                     "description": model_info["description"],
                     "context_length": model_info["context_length"],
                     "supports_images": model_info["supports_images"],
+                    "is_claude": is_claude_model(model_name),
                 })
             except ValueError:
                 # Skip models with missing info
@@ -282,6 +313,33 @@ def list_available_models() -> Dict[str, List[Dict[str, Any]]]:
             "error": error_info["error"],
             "message": error_info["message"],
             "models": [],
+        }
+
+
+@mcp.tool()
+def get_server_info() -> Dict[str, Any]:
+    """
+    Get information about the server configuration.
+    
+    Returns:
+        Dictionary with server information
+    """
+    try:
+        return {
+            "name": "Poe Proxy MCP Server",
+            "version": "0.1.0",
+            "claude_compatible": config.claude_compatible,
+            "debug_mode": config.debug_mode,
+            "max_file_size_mb": config.max_file_size_mb,
+            "session_expiry_minutes": config.session_expiry_minutes,
+            "active_sessions": len(session_manager.sessions),
+        }
+    
+    except Exception as e:
+        error_info = handle_exception(e)
+        return {
+            "error": error_info["error"],
+            "message": error_info["message"],
         }
 
 
@@ -310,6 +368,7 @@ async def cleanup_sessions_task():
 async def startup():
     """Start background tasks when the server starts."""
     logger.info("Starting Poe Proxy MCP Server")
+    logger.info(f"Claude compatibility mode: {config.claude_compatible}")
     
     # Start the session cleanup task
     asyncio.create_task(cleanup_sessions_task())
