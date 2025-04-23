@@ -18,19 +18,27 @@ from utils import (
     handle_exception,
 )
 
+from .claude_compat import (
+    format_thinking_protocol,
+    process_claude_response,
+    handle_claude_error,
+    is_claude_model,
+)
+
 
 class PoeClient:
     """
     Client for interacting with the Poe API.
     """
     
-    def __init__(self, api_key: str, debug_mode: bool = False):
+    def __init__(self, api_key: str, debug_mode: bool = False, claude_compatible: bool = False):
         """
         Initialize the Poe API client.
         
         Args:
             api_key (str): The Poe API key for authentication
             debug_mode (bool): Whether to enable debug logging
+            claude_compatible (bool): Whether to enable Claude compatibility mode
         
         Raises:
             AuthenticationError: If the API key is invalid
@@ -42,6 +50,11 @@ class PoeClient:
         
         self.api_key = api_key
         self.debug_mode = debug_mode
+        self.claude_compatible = claude_compatible
+        
+        if self.claude_compatible:
+            logger.info("Claude compatibility mode enabled")
+        
         logger.info("Poe API client initialized")
     
     async def query_model(
@@ -50,6 +63,7 @@ class PoeClient:
         prompt: str,
         messages: Optional[List[fp.ProtocolMessage]] = None,
         stream_handler: Optional[callable] = None,
+        thinking: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Query a Poe model with a prompt.
@@ -59,6 +73,7 @@ class PoeClient:
             prompt (str): The prompt to send to the bot
             messages (List[fp.ProtocolMessage], optional): Previous messages for context
             stream_handler (callable, optional): Function to handle streaming responses
+            thinking (Dict[str, Any], optional): Parameters for Claude's thinking protocol
             
         Returns:
             Dict[str, Any]: The response from the bot
@@ -78,18 +93,59 @@ class PoeClient:
                 logger.debug(f"Querying bot '{bot_name}' with prompt: {prompt}")
                 logger.debug(f"Message history length: {len(messages)}")
             
+            # Handle Claude compatibility if needed
+            is_claude = is_claude_model(bot_name)
+            
+            if is_claude and self.claude_compatible and thinking:
+                formatted_thinking = format_thinking_protocol(thinking)
+                logger.debug(f"Using Claude thinking protocol: {formatted_thinking}")
+            else:
+                formatted_thinking = None
+            
             # Collect the full response
             full_response = ""
-            async for partial in fp.get_bot_response(
-                messages=messages,
-                bot_name=bot_name,
-                api_key=self.api_key,
-            ):
-                full_response += partial.text
+            try:
+                async for partial in fp.get_bot_response(
+                    messages=messages,
+                    bot_name=bot_name,
+                    api_key=self.api_key,
+                ):
+                    chunk_text = partial.text
+                    
+                    # Process Claude response if needed
+                    if is_claude and self.claude_compatible:
+                        chunk_text = process_claude_response(chunk_text)
+                    
+                    full_response += chunk_text
+                    
+                    # Call the stream handler if provided
+                    if stream_handler:
+                        await stream_handler(chunk_text)
+            
+            except Exception as e:
+                # Handle Claude-specific errors
+                if is_claude and self.claude_compatible:
+                    error_info = handle_claude_error(e)
+                    logger.warning(f"Claude error handled: {error_info['message']}")
+                    
+                    # If we have a partial response, return it with the error
+                    if full_response:
+                        return {
+                            "text": full_response,
+                            "bot": bot_name,
+                            "error": error_info["error"],
+                            "error_message": error_info["message"],
+                        }
+                    
+                    # Otherwise, re-raise the error
+                    raise PoeApiError(error_info["message"])
                 
-                # Call the stream handler if provided
-                if stream_handler:
-                    await stream_handler(partial.text)
+                # Re-raise other errors
+                raise
+            
+            # Process the full response for Claude if needed
+            if is_claude and self.claude_compatible:
+                full_response = process_claude_response(full_response)
             
             if self.debug_mode:
                 logger.debug(f"Received response from bot '{bot_name}' (length: {len(full_response)})")
@@ -110,6 +166,7 @@ class PoeClient:
         file_path: str,
         messages: Optional[List[fp.ProtocolMessage]] = None,
         stream_handler: Optional[callable] = None,
+        thinking: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Query a Poe model with a prompt and a file.
@@ -120,6 +177,7 @@ class PoeClient:
             file_path (str): Path to the file to include with the prompt
             messages (List[fp.ProtocolMessage], optional): Previous messages for context
             stream_handler (callable, optional): Function to handle streaming responses
+            thinking (Dict[str, Any], optional): Parameters for Claude's thinking protocol
             
         Returns:
             Dict[str, Any]: The response from the bot
@@ -153,21 +211,62 @@ class PoeClient:
                 logger.debug(f"Querying bot '{bot_name}' with file: {file_path}")
                 logger.debug(f"Message history length: {len(messages)}")
             
+            # Handle Claude compatibility if needed
+            is_claude = is_claude_model(bot_name)
+            
+            if is_claude and self.claude_compatible and thinking:
+                formatted_thinking = format_thinking_protocol(thinking)
+                logger.debug(f"Using Claude thinking protocol: {formatted_thinking}")
+            else:
+                formatted_thinking = None
+            
             # Add the new user message with the file content
             messages.append(fp.ProtocolMessage(role="user", content=combined_prompt))
             
             # Collect the full response
             full_response = ""
-            async for partial in fp.get_bot_response(
-                messages=messages,
-                bot_name=bot_name,
-                api_key=self.api_key,
-            ):
-                full_response += partial.text
+            try:
+                async for partial in fp.get_bot_response(
+                    messages=messages,
+                    bot_name=bot_name,
+                    api_key=self.api_key,
+                ):
+                    chunk_text = partial.text
+                    
+                    # Process Claude response if needed
+                    if is_claude and self.claude_compatible:
+                        chunk_text = process_claude_response(chunk_text)
+                    
+                    full_response += chunk_text
+                    
+                    # Call the stream handler if provided
+                    if stream_handler:
+                        await stream_handler(chunk_text)
+            
+            except Exception as e:
+                # Handle Claude-specific errors
+                if is_claude and self.claude_compatible:
+                    error_info = handle_claude_error(e)
+                    logger.warning(f"Claude error handled: {error_info['message']}")
+                    
+                    # If we have a partial response, return it with the error
+                    if full_response:
+                        return {
+                            "text": full_response,
+                            "bot": bot_name,
+                            "error": error_info["error"],
+                            "error_message": error_info["message"],
+                        }
+                    
+                    # Otherwise, re-raise the error
+                    raise PoeApiError(error_info["message"])
                 
-                # Call the stream handler if provided
-                if stream_handler:
-                    await stream_handler(partial.text)
+                # Re-raise other errors
+                raise
+            
+            # Process the full response for Claude if needed
+            if is_claude and self.claude_compatible:
+                full_response = process_claude_response(full_response)
             
             if self.debug_mode:
                 logger.debug(f"Received response from bot '{bot_name}' with file (length: {len(full_response)})")
