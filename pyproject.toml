@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "poe-proxy-mcp"
+version = "0.1.0"
+description = "A FastMCP server that proxies the Poe.com API with Claude compatibility"
+readme = "README.md"
+authors = [
+    {name = "Anansi Trading", email = "info@anansitrading.com"}
+]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "fastmcp>=0.2.0",
+    "fastapi-poe>=0.0.16",
+    "httpx>=0.24.1",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+    "loguru>=0.7.0",
+    "uvicorn>=0.22.0",
+    "python-multipart>=0.0.6",
+]
+
+[project.scripts]
+poe-mcp = "poe_server:main"
+poe-mcp-sse = "run_sse_server:main"
+
+[project.urls]
+"Homepage" = "https://github.com/Anansitrading/poe-proxy-mcp"
+"Bug Tracker" = "https://github.com/Anansitrading/poe-proxy-mcp/issues"
+
+[tool.setuptools]
+packages = ["poe_client", "utils"]
