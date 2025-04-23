@@ -23,12 +23,25 @@ from utils import (
     handle_exception,
 )
 
-# Initialize logging
+from poe_client import (
+    PoeClient,
+    SessionManager,
+    validate_file,
+    is_text_file,
+    read_file_content,
+    create_temp_file,
+)
+
+# Initialize logging and configuration
 config = get_config()
 logger = setup_logging(config.debug_mode)
 
 # Create FastMCP server
 mcp = FastMCP("Poe Proxy MCP Server")
+
+# Initialize Poe API client and session manager
+poe_client = PoeClient(api_key=config.poe_api_key, debug_mode=config.debug_mode)
+session_manager = SessionManager(expiry_minutes=config.session_expiry_minutes)
 
 
 # Define models for the MCP tools
@@ -84,35 +97,6 @@ class QueryResponse(BaseModel):
     )
 
 
-# Session storage
-sessions: Dict[str, List[fp.ProtocolMessage]] = {}
-
-
-def _generate_session_id() -> str:
-    """Generate a unique session ID."""
-    import uuid
-    return str(uuid.uuid4())
-
-
-def _get_or_create_session(session_id: Optional[str] = None) -> str:
-    """Get an existing session or create a new one."""
-    if session_id and session_id in sessions:
-        return session_id
-    
-    new_session_id = _generate_session_id()
-    sessions[new_session_id] = []
-    return new_session_id
-
-
-def _update_session(session_id: str, user_message: str, bot_message: str) -> None:
-    """Update a session with new messages."""
-    if session_id not in sessions:
-        sessions[session_id] = []
-    
-    sessions[session_id].append(fp.ProtocolMessage(role="user", content=user_message))
-    sessions[session_id].append(fp.ProtocolMessage(role="assistant", content=bot_message))
-
-
 @mcp.tool()
 async def ask_poe(
     bot: str,
@@ -134,34 +118,33 @@ async def ask_poe(
     """
     try:
         # Get or create session
-        current_session_id = _get_or_create_session(session_id)
+        current_session_id = session_manager.get_or_create_session(session_id)
         
-        # Prepare messages
-        messages = []
-        if current_session_id in sessions:
-            messages = sessions[current_session_id].copy()
+        # Get messages from session
+        messages = session_manager.get_messages(current_session_id)
         
-        # Add the new user message
-        messages.append(fp.ProtocolMessage(role="user", content=prompt))
-        
-        # Collect the full response
-        full_response = ""
-        async for partial in fp.get_bot_response(
-            messages=messages,
-            bot_name=bot,
-            api_key=config.poe_api_key,
-        ):
-            full_response += partial.text
-            
-            # Yield progress updates if using streaming
+        # Define stream handler for progress updates
+        async def stream_handler(text: str):
             if hasattr(mcp, "yield_progress"):
-                await mcp.yield_progress({"text": partial.text})
+                await mcp.yield_progress({"text": text})
+        
+        # Query the Poe model
+        response = await poe_client.query_model(
+            bot_name=bot,
+            prompt=prompt,
+            messages=messages,
+            stream_handler=stream_handler,
+        )
         
         # Update session with the new messages
-        _update_session(current_session_id, prompt, full_response)
+        session_manager.update_session(
+            session_id=current_session_id,
+            user_message=prompt,
+            bot_message=response["text"],
+        )
         
         return {
-            "text": full_response,
+            "text": response["text"],
             "session_id": current_session_id,
         }
     
@@ -196,61 +179,38 @@ async def ask_with_attachment(
         Response from the bot and session information
     """
     try:
-        # Validate file exists
-        if not os.path.exists(attachment_path):
-            raise FileHandlingError(f"File not found: {attachment_path}")
-        
-        # Check file size
-        file_size_mb = os.path.getsize(attachment_path) / (1024 * 1024)
-        if file_size_mb > config.max_file_size_mb:
-            raise FileHandlingError(
-                f"File size ({file_size_mb:.2f} MB) exceeds maximum allowed size "
-                f"({config.max_file_size_mb} MB)"
-            )
+        # Validate file
+        validate_file(attachment_path, max_size_mb=config.max_file_size_mb)
         
         # Get or create session
-        current_session_id = _get_or_create_session(session_id)
+        current_session_id = session_manager.get_or_create_session(session_id)
         
-        # Prepare messages
-        messages = []
-        if current_session_id in sessions:
-            messages = sessions[current_session_id].copy()
+        # Get messages from session
+        messages = session_manager.get_messages(current_session_id)
         
-        # Add the new user message with attachment
-        # Note: This is a placeholder as fastapi_poe doesn't directly support file attachments
-        # In a real implementation, you would need to handle file uploads differently
-        with open(attachment_path, "rb") as f:
-            file_content = f.read()
-            
-        # For now, we'll just include the file content as text if it's a text file
-        # In a real implementation, you would use the appropriate API for file uploads
-        try:
-            file_text = file_content.decode("utf-8")
-            combined_prompt = f"{prompt}\n\nFile content:\n{file_text}"
-        except UnicodeDecodeError:
-            # If it's not a text file, just use the original prompt
-            combined_prompt = f"{prompt}\n\n[File attached: {os.path.basename(attachment_path)}]"
-        
-        messages.append(fp.ProtocolMessage(role="user", content=combined_prompt))
-        
-        # Collect the full response
-        full_response = ""
-        async for partial in fp.get_bot_response(
-            messages=messages,
-            bot_name=bot,
-            api_key=config.poe_api_key,
-        ):
-            full_response += partial.text
-            
-            # Yield progress updates if using streaming
+        # Define stream handler for progress updates
+        async def stream_handler(text: str):
             if hasattr(mcp, "yield_progress"):
-                await mcp.yield_progress({"text": partial.text})
+                await mcp.yield_progress({"text": text})
+        
+        # Query the Poe model with the file
+        response = await poe_client.query_model_with_file(
+            bot_name=bot,
+            prompt=prompt,
+            file_path=attachment_path,
+            messages=messages,
+            stream_handler=stream_handler,
+        )
         
         # Update session with the new messages
-        _update_session(current_session_id, combined_prompt, full_response)
+        session_manager.update_session(
+            session_id=current_session_id,
+            user_message=f"{prompt} [File: {os.path.basename(attachment_path)}]",
+            bot_message=response["text"],
+        )
         
         return {
-            "text": full_response,
+            "text": response["text"],
             "session_id": current_session_id,
         }
     
@@ -275,17 +235,84 @@ def clear_session(session_id: str) -> Dict[str, str]:
         Status information
     """
     try:
-        if session_id in sessions:
-            sessions.pop(session_id)
+        success = session_manager.delete_session(session_id)
+        
+        if success:
             return {"status": "success", "message": f"Session {session_id} cleared"}
         else:
             return {"status": "error", "message": f"Session {session_id} not found"}
+    
     except Exception as e:
         error_info = handle_exception(e)
         return {
             "status": "error",
             "message": error_info["message"],
         }
+
+
+@mcp.tool()
+def list_available_models() -> Dict[str, List[Dict[str, Any]]]:
+    """
+    List available Poe models and their capabilities.
+    
+    Returns:
+        Dictionary with list of available models and their information
+    """
+    try:
+        models = []
+        
+        for model_name in poe_client.get_available_models():
+            try:
+                model_info = poe_client.get_model_info(model_name)
+                models.append({
+                    "name": model_name,
+                    "description": model_info["description"],
+                    "context_length": model_info["context_length"],
+                    "supports_images": model_info["supports_images"],
+                })
+            except ValueError:
+                # Skip models with missing info
+                continue
+        
+        return {"models": models}
+    
+    except Exception as e:
+        error_info = handle_exception(e)
+        return {
+            "error": error_info["error"],
+            "message": error_info["message"],
+            "models": [],
+        }
+
+
+# Periodic task to clean up expired sessions
+async def cleanup_sessions_task():
+    """Periodically clean up expired sessions."""
+    while True:
+        try:
+            # Clean up expired sessions
+            num_cleaned = session_manager.cleanup_expired_sessions()
+            
+            if num_cleaned > 0:
+                logger.info(f"Cleaned up {num_cleaned} expired sessions")
+            
+            # Sleep for 15 minutes
+            await asyncio.sleep(15 * 60)
+        
+        except Exception as e:
+            logger.error(f"Error in cleanup_sessions_task: {str(e)}")
+            # Sleep for 1 minute before retrying
+            await asyncio.sleep(60)
+
+
+# Start the cleanup task when the server starts
+@mcp.on_startup
+async def startup():
+    """Start background tasks when the server starts."""
+    logger.info("Starting Poe Proxy MCP Server")
+    
+    # Start the session cleanup task
+    asyncio.create_task(cleanup_sessions_task())
 
 
 if __name__ == "__main__":
