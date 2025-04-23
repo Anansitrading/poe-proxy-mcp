@@ -8,6 +8,7 @@ which allows it to be used with web clients.
 import os
 import sys
 import importlib.util
+import argparse
 from fastmcp.transports.sse import run_sse
 
 # Get the path to the poe_server.py file
@@ -18,14 +19,22 @@ spec = importlib.util.spec_from_file_location("poe_server", server_path)
 poe_server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(poe_server)
 
-# Run the server with SSE transport
-if __name__ == "__main__":
-    # Get the port from command line arguments or use default
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+
+def main():
+    """Entry point for the console script."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Run the Poe Proxy MCP server with SSE transport")
+    parser.add_argument("port", nargs="?", type=int, default=8000, help="Port to run the server on (default: 8000)")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)")
+    args = parser.parse_args()
     
-    print(f"Starting Poe Proxy MCP server with SSE transport on port {port}")
-    print(f"Access the server at http://localhost:{port}")
+    print(f"Starting Poe Proxy MCP server with SSE transport on {args.host}:{args.port}")
+    print(f"Access the server at http://{args.host if args.host != '0.0.0.0' else 'localhost'}:{args.port}")
     print("Press Ctrl+C to stop the server")
     
     # Run the server with SSE transport
-    run_sse(poe_server.mcp, host="0.0.0.0", port=port)
+    run_sse(poe_server.mcp, host=args.host, port=args.port)
+
+
+if __name__ == "__main__":
+    main()
