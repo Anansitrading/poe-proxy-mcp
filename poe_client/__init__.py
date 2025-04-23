@@ -11,6 +11,12 @@ from .file_utils import (
     create_temp_file,
     get_common_mime_types,
 )
+from .claude_compat import (
+    format_thinking_protocol,
+    process_claude_response,
+    handle_claude_error,
+    is_claude_model,
+)
 
 __all__ = [
     "PoeClient",
@@ -20,4 +26,8 @@ __all__ = [
     "read_file_content",
     "create_temp_file",
     "get_common_mime_types",
+    "format_thinking_protocol",
+    "process_claude_response",
+    "handle_claude_error",
+    "is_claude_model",
 ]
