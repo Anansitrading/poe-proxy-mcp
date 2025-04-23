@@ -16,9 +16,28 @@ A FastMCP server that proxies the Poe.com API, exposing tools for querying Poe m
 ### Prerequisites
 
 - Python 3.8 or higher
-- A Poe API key (get one from [Poe.com](https://poe.com/))
+- A Poe API key (get one from [Poe.com](https://poe.com/api_key))
 
-### Setup
+### Quick Installation
+
+Use the provided installation script:
+
+```bash
+git clone https://github.com/Anansitrading/poe-proxy-mcp.git
+cd poe-proxy-mcp
+chmod +x install.sh
+./install.sh
+```
+
+The script will:
+1. Create a virtual environment
+2. Install all dependencies
+3. Create a `.env` file if it doesn't exist
+4. Set up the server for both STDIO and SSE transports
+
+### Manual Setup
+
+If you prefer to set up manually:
 
 1. Clone this repository:
    ```bash
@@ -38,6 +57,16 @@ A FastMCP server that proxies the Poe.com API, exposing tools for querying Poe m
    cp .env.example .env
    # Edit .env with your API key
    ```
+
+### Installation as a Package
+
+You can also install the server as a Python package:
+
+```bash
+pip install -e .
+```
+
+This will make the `poe-mcp` and `poe-mcp-sse` commands available in your environment.
 
 ## Configuration
 
@@ -60,6 +89,10 @@ The server can be configured using environment variables:
 This is the default mode and is suitable for command-line usage:
 
 ```bash
+# If installed as a package:
+poe-mcp
+
+# Or directly:
 python poe_server.py
 ```
 
@@ -68,6 +101,10 @@ python poe_server.py
 This mode enables the server to be used with web clients:
 
 ```bash
+# If installed as a package:
+poe-mcp-sse [port]
+
+# Or directly:
 python run_sse_server.py [port]
 ```
 
