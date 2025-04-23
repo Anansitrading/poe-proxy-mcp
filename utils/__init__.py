@@ -11,6 +11,11 @@ from .logging_utils import (
     handle_exception,
 )
 
+from .config import (
+    get_config,
+    PoeProxyConfig,
+)
+
 __all__ = [
     "setup_logging",
     "PoeProxyError",
@@ -18,4 +23,6 @@ __all__ = [
     "PoeApiError",
     "FileHandlingError",
     "handle_exception",
+    "get_config",
+    "PoeProxyConfig",
 ]
