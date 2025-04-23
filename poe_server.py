@@ -374,6 +374,12 @@ async def startup():
     asyncio.create_task(cleanup_sessions_task())
 
 
+def main():
+    """Entry point for the console script."""
+    logger.info("Starting Poe Proxy MCP Server with STDIO transport")
+    mcp.run()
+
+
 if __name__ == "__main__":
     # Run the MCP server
-    mcp.run()
+    main()
