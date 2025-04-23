@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poe Proxy MCP Web Client</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        label {
+            font-weight: bold;
+        }
+        select, textarea, input[type="text"] {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .response {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            min-height: 100px;
+            white-space: pre-wrap;
+        }
+        .status {
+            color: #666;
+            font-style: italic;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .models-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .model-card {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            width: calc(33% - 10px);
+        }
+        .model-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .model-info {
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Poe Proxy MCP Web Client</h1>
+    
+    <div class="container">
+        <div class="form-group">
+            <label for="server-url">Server URL:</label>
+            <input type="text" id="server-url" value="http://localhost:8000" />
+        </div>
+        
+        <div class="form-group">
+            <button id="get-models-btn">Get Available Models</button>
+            <div id="models-container" class="models-list"></div>
+        </div>
+        
+        <div class="form-group">
+            <label for="model-select">Select Model:</label>
+            <select id="model-select">
+                <option value="GPT-3.5-Turbo">GPT-3.5-Turbo</option>
+                <option value="Claude-3-Sonnet-7k">Claude-3-Sonnet-7k</option>
+                <option value="Claude-3-Opus-200k">Claude-3-Opus-200k</option>
+                <option value="GPT-4o">GPT-4o</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="prompt">Prompt:</label>
+            <textarea id="prompt" rows="5" placeholder="Enter your prompt here..."></textarea>
+        </div>
+        
+        <div class="form-group">
+            <label for="session-id">Session ID (optional):</label>
+            <input type="text" id="session-id" placeholder="Leave empty for a new session" />
+        </div>
+        
+        <div class="form-group">
+            <button id="submit-btn">Submit</button>
+            <button id="clear-session-btn" disabled>Clear Session</button>
+        </div>
+        
+        <div class="form-group">
+            <label>Response:</label>
+            <div id="status" class="status">Ready</div>
+            <div id="response" class="response"></div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const serverUrlInput = document.getElementById('server-url');
+        const getModelsBtn = document.getElementById('get-models-btn');
+        const modelsContainer = document.getElementById('models-container');
+        const modelSelect = document.getElementById('model-select');
+        const promptTextarea = document.getElementById('prompt');
+        const sessionIdInput = document.getElementById('session-id');
+        const submitBtn = document.getElementById('submit-btn');
+        const clearSessionBtn = document.getElementById('clear-session-btn');
+        const statusDiv = document.getElementById('status');
+        const responseDiv = document.getElementById('response');
+
+        // Event Listeners
+        getModelsBtn.addEventListener('click', getAvailableModels);
+        submitBtn.addEventListener('click', submitPrompt);
+        clearSessionBtn.addEventListener('click', clearSession);
+
+        // Functions
+        async function getAvailableModels() {
+            try {
+                statusDiv.textContent = 'Fetching available models...';
+                modelsContainer.innerHTML = '';
+                
+                const serverUrl = serverUrlInput.value;
+                const response = await fetch(`${serverUrl}/tools/call`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        method: 'list_available_models',
+                        params: {}
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Clear and populate the model select dropdown
+                modelSelect.innerHTML = '';
+                
+                // Display models
+                data.result.models.forEach(model => {
+                    // Add to dropdown
+                    const option = document.createElement('option');
+                    option.value = model.name;
+                    option.textContent = model.name;
+                    modelSelect.appendChild(option);
+                    
+                    // Create model card
+                    const modelCard = document.createElement('div');
+                    modelCard.className = 'model-card';
+                    
+                    const modelName = document.createElement('div');
+                    modelName.className = 'model-name';
+                    modelName.textContent = model.name;
+                    
+                    const modelInfo = document.createElement('div');
+                    modelInfo.className = 'model-info';
+                    modelInfo.innerHTML = `
+                        <div>Context: ${model.context_length.toLocaleString()} tokens</div>
+                        <div>Images: ${model.supports_images ? 'Yes' : 'No'}</div>
+                        <div>Claude: ${model.is_claude ? 'Yes' : 'No'}</div>
+                    `;
+                    
+                    modelCard.appendChild(modelName);
+                    modelCard.appendChild(modelInfo);
+                    modelsContainer.appendChild(modelCard);
+                });
+                
+                statusDiv.textContent = 'Models fetched successfully';
+            } catch (error) {
+                statusDiv.textContent = 'Error fetching models';
+                statusDiv.className = 'error';
+                console.error('Error:', error);
+            }
+        }
+
+        async function submitPrompt() {
+            try {
+                const serverUrl = serverUrlInput.value;
+                const model = modelSelect.value;
+                const prompt = promptTextarea.value;
+                const sessionId = sessionIdInput.value;
+                
+                if (!prompt.trim()) {
+                    statusDiv.textContent = 'Please enter a prompt';
+                    statusDiv.className = 'error';
+                    return;
+                }
+                
+                // Disable submit button
+                submitBtn.disabled = true;
+                statusDiv.className = 'status';
+                statusDiv.textContent = 'Sending request...';
+                responseDiv.textContent = '';
+                
+                // Create EventSource for streaming
+                const params = new URLSearchParams({
+                    method: 'ask_poe',
+                    bot: model,
+                    prompt: prompt
+                });
+                
+                if (sessionId) {
+                    params.append('session_id', sessionId);
+                }
+                
+                const eventSource = new EventSource(`${serverUrl}/tools/stream?${params.toString()}`);
+                
+                eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'progress') {
+                        responseDiv.textContent += data.data.text;
+                    } else if (data.type === 'result') {
+                        // Update session ID input
+                        if (data.data.session_id) {
+                            sessionIdInput.value = data.data.session_id;
+                            clearSessionBtn.disabled = false;
+                        }
+                        
+                        // Check for warnings
+                        if (data.data.warning) {
+                            statusDiv.textContent = `Warning: ${data.data.warning}`;
+                        } else {
+                            statusDiv.textContent = 'Response complete';
+                        }
+                        
+                        // Close the event source
+                        eventSource.close();
+                        
+                        // Re-enable submit button
+                        submitBtn.disabled = false;
+                    }
+                };
+                
+                eventSource.onerror = (error) => {
+                    console.error('EventSource error:', error);
+                    statusDiv.textContent = 'Error: Connection failed';
+                    statusDiv.className = 'error';
+                    eventSource.close();
+                    submitBtn.disabled = false;
+                };
+            } catch (error) {
+                statusDiv.textContent = 'Error submitting prompt';
+                statusDiv.className = 'error';
+                console.error('Error:', error);
+                submitBtn.disabled = false;
+            }
+        }
+
+        async function clearSession() {
+            try {
+                const serverUrl = serverUrlInput.value;
+                const sessionId = sessionIdInput.value;
+                
+                if (!sessionId) {
+                    statusDiv.textContent = 'No session ID to clear';
+                    return;
+                }
+                
+                statusDiv.className = 'status';
+                statusDiv.textContent = 'Clearing session...';
+                
+                const response = await fetch(`${serverUrl}/tools/call`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        method: 'clear_session',
+                        params: {
+                            session_id: sessionId
+                        }
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                statusDiv.textContent = data.result.message;
+                
+                if (data.result.status === 'success') {
+                    sessionIdInput.value = '';
+                    clearSessionBtn.disabled = true;
+                }
+            } catch (error) {
+                statusDiv.textContent = 'Error clearing session';
+                statusDiv.className = 'error';
+                console.error('Error:', error);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Check if the browser supports EventSource
+            if (typeof EventSource === 'undefined') {
+                statusDiv.textContent = 'Your browser does not support server-sent events';
+                statusDiv.className = 'error';
+                submitBtn.disabled = true;
+            }
+        });
+    </script>
+</body>
+</html>
