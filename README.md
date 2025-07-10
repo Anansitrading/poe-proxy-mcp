@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/anansitrading-poe-proxy-mcp-badge.png)](https://mseep.ai/app/anansitrading-poe-proxy-mcp)
+
 # Poe Proxy MCP Server
 
 A FastMCP server that proxies the Poe.com API, exposing tools for querying Poe models and sharing files. This server is specifically designed to ensure compatibility with Claude 3.7 Sonnet and other models available through Poe.
