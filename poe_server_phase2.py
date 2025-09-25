@@ -465,50 +465,33 @@ def _format_uptime(seconds: float) -> str:
     return " ".join(parts) if parts else "< 1m"
 
 
-# Startup and shutdown handlers
-@mcp.on_startup()
-async def startup():
-    """Initialize server on startup."""
-    logger.info("Starting POE MCP Server Phase 2")
-    
-    # Start rate limiter queue processor
-    await rate_limiter.start_queue_processor()
-    
-    logger.info("Server initialized successfully")
-
-
-@mcp.on_shutdown()
-async def shutdown():
-    """Cleanup on shutdown."""
-    logger.info("Shutting down POE MCP Server Phase 2")
-    
-    # Stop rate limiter
-    await rate_limiter.stop_queue_processor()
-    
-    # Log final metrics
-    logger.info(f"Final metrics: {metrics}")
-    
-    logger.info("Server shutdown complete")
-
-
-def main():
-    """Run the MCP server."""
+# Main entry point
+if __name__ == "__main__":
     import sys
-    from fastmcp.server import stdio_server
+    import uvicorn
     
     logger.info("POE MCP Server Phase 2 starting...")
     logger.info(f"Rate limiting: 500 RPM with exponential backoff")
-    logger.info(f"Warp integration: Context extraction and output formatting enabled")
+    logger.info(f"Warp integration: Context extraction and output formatting enabled")  
     logger.info(f"Streaming: SSE support with error recovery")
+    logger.info(f"Starting server on port {os.getenv('PORT', 8000)}")
+    
+    # Run with uvicorn for production
+    port = int(os.getenv('PORT', 8000))
     
     try:
-        stdio_server(mcp)
+        # Create FastAPI app from FastMCP
+        app = mcp.get_app()
+        
+        # Run server
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=port,
+            log_level="info" if config.debug_mode else "warning"
+        )
     except KeyboardInterrupt:
         logger.info("Server interrupted by user")
     except Exception as e:
         logger.error(f"Server error: {e}")
         sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
