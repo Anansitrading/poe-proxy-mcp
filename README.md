@@ -70,6 +70,8 @@ HEALTH_CHECK_INTERVAL=30
 
 ### Step 3: Configure in Warp Terminal
 
+#### Option A: Local Installation (Can cause stability issues)
+
 1. **Open Warp MCP Settings**:
    - Navigate to: **Settings → AI → Manage MCP servers**
    - Or press `Ctrl+P` (Linux/Windows) or `Cmd+P` (macOS) and search for "Open MCP Servers"
@@ -99,56 +101,120 @@ HEALTH_CHECK_INTERVAL=30
    - Click **Start** next to your server entry
    - The server status should show as "Running"
 
+#### Option B: Remote Hosting (Recommended for Stability)
+
+**Warp supports remote MCP servers!** Host your MCP server remotely to avoid local stability issues.
+
+1. **Deploy to Railway.app** (Best free option):
+   ```bash
+   # Prepare for deployment
+   cd enhanced-poe-mcp
+   echo "web: python poe_server_phase2.py" > Procfile
+   git add .
+   git commit -m "Add Procfile for Railway"
+   git push origin main
+   ```
+
+2. **Configure Railway**:
+   - Sign up at [railway.app](https://railway.app)
+   - Create new project → Deploy from GitHub
+   - Add environment variables in Railway dashboard:
+     - `POE_API_KEY`
+     - `PORT=8000`
+     - Any other config variables
+
+3. **Configure Warp for Remote MCP**:
+   ```json
+   {
+     "enhanced-poe-mcp": {
+       "url": "https://your-app.up.railway.app/mcp/stream"
+     }
+   }
+   ```
+
+**Alternative Hosting Options**:
+- **Render.com**: Good free tier, easy deployment
+- **Google Cloud Run**: Generous free tier, requires Docker
+- **Fly.io**: Global deployment, more complex setup
+
 ## 🎮 Usage in Warp Terminal
+
+### Specifying POE Models
+
+POE is a marketplace with hundreds of LLMs. You must specify which model to use:
+
+```bash
+# Using Claude 3.5 Sonnet
+@poe --model claude-3-5-sonnet "Explain quantum computing"
+
+# Using GPT-4o
+@poe --model gpt-4o "Write a Python function"
+
+# Using Gemini Pro
+@poe --model google-gemini-pro "Analyze this data"
+```
+
+**Popular Model Identifiers**:
+| Model | Bot Identifier |
+|-------|---------------|
+| Claude 3.5 Sonnet | `claude-3-5-sonnet` |
+| Claude 3 Opus | `claude-3-opus-20240229` |
+| GPT-4 Turbo | `gpt-4-turbo` |
+| GPT-4o | `gpt-4o` |
+| Gemini Pro | `google-gemini-pro` |
+| Llama 3 (70B) | `llama-3-70b` |
+| Mistral Large | `mistral-large` |
+| Perplexity | `perplexity-online` |
+| Custom Bots | Use the handle from poe.com/[bot-name] |
 
 ### Basic POE Query
 ```bash
-# Ask a simple question
-@poe What is the fastest way to create a Python virtual environment?
+# Ask a simple question with specific model
+@poe --model claude-3-5-sonnet What is the fastest way to create a Python virtual environment?
 
 # Expected output:
-# POE will respond with: "Use `python -m venv <directory>` to create a virtual environment. 
+# Claude will respond with: "Use `python -m venv <directory>` to create a virtual environment. 
 # Activate it with `source <directory>/bin/activate` on Linux/macOS..."
 ```
 
 ### Query with File Attachment
 ```bash
-# Review a configuration file
-@poe Review this Dockerfile for security issues [attach:./Dockerfile]
+# Review a configuration file with Claude 3.5
+@poe --model claude-3-5-sonnet Review this Dockerfile for security issues [attach:./Dockerfile]
 
 # Expected output:
-# POE analyzes the file and provides security recommendations:
+# Claude analyzes the file and provides security recommendations:
 # "Found potential issues: 1) Running as root user, 2) No health check defined..."
 ```
 
 ### Context-Aware Query
 ```bash
 # Get help with a recent error (POE sees your terminal output)
-@poe Why did my git push fail?
+@poe --model gpt-4o Why did my git push fail?
 
 # Expected output:
-# POE analyzes recent terminal output and responds:
+# GPT-4o analyzes recent terminal output and responds:
 # "The push failed because the remote has changes not in your local branch. 
 # Run `git pull --rebase` first..."
 ```
 
 ### Execute Terminal Commands
 ```bash
-# Let POE execute safe commands
-@poe Find all Python files modified today and show their sizes
+# Let POE execute safe commands using Gemini
+@poe --model google-gemini-pro Find all Python files modified today and show their sizes
 
 # Expected output:
-# POE generates and executes: find . -name "*.py" -mtime 0 -ls
+# Gemini generates and executes: find . -name "*.py" -mtime 0 -ls
 # Shows results directly in terminal
 ```
 
 ### Stream Long Responses
 ```bash
-# Get streaming output for complex tasks
-@poe Stream: Generate a complete FastAPI application with authentication
+# Get streaming output for complex tasks with Claude Opus
+@poe --model claude-3-opus-20240229 --stream Generate a complete FastAPI application with authentication
 
 # Expected output:
-# POE streams the code generation in real-time, showing each part as it's created
+# Claude Opus streams the code generation in real-time, showing each part as it's created
 ```
 
 ### Session Management
@@ -305,7 +371,82 @@ pip install -r requirements.txt
 source venv/bin/activate
 ```
 
-## 🏗️ Architecture
+## 🚀 Remote Deployment Guide (Railway)
+
+### Why Host Remotely?
+- Avoids local stability issues
+- Always available, even when your machine is off
+- Centralized configuration management
+- Better for team collaboration
+
+### Step-by-Step Railway Deployment
+
+1. **Prepare Your Project**:
+   ```bash
+   cd enhanced-poe-mcp
+   
+   # Create Procfile for Railway
+   echo 'web: python poe_server_phase2.py' > Procfile
+   
+   # Ensure requirements.txt is complete
+   pip freeze > requirements.txt
+   
+   # Create runtime.txt for Python version
+   echo "python-3.11.x" > runtime.txt
+   
+   # Commit changes
+   git add .
+   git commit -m "Add Railway deployment files"
+   git push origin main
+   ```
+
+2. **Set Up Railway**:
+   - Sign up at [railway.app](https://railway.app) (free with GitHub)
+   - Click **"New Project"** → **"Deploy from GitHub repo"**
+   - Select your `enhanced-poe-mcp` repository
+   - Railway will auto-detect Python and begin deployment
+
+3. **Configure Environment Variables**:
+   In Railway dashboard, go to **Variables** tab and add:
+   ```
+   POE_API_KEY=your_poe_api_key_here
+   PORT=8000
+   DEBUG_MODE=false
+   RATE_LIMIT_RPM=500
+   PYTHONUNBUFFERED=1
+   ```
+
+4. **Get Your Server URL**:
+   - Go to **Settings** tab in Railway
+   - Under **Domains**, click **"Generate Domain"**
+   - Copy your URL (e.g., `https://your-app.up.railway.app`)
+
+5. **Configure Warp with Remote URL**:
+   ```json
+   {
+     "enhanced-poe-mcp": {
+       "url": "https://your-app.up.railway.app/mcp/stream"
+     }
+   }
+   ```
+
+6. **Test the Connection**:
+   ```bash
+   # Test your remote server
+   curl https://your-app.up.railway.app/health
+   
+   # Should return:
+   # {"status": "healthy", "version": "2.0.0"}
+   ```
+
+### Monitoring Your Remote Server
+
+- **Logs**: View in Railway dashboard under "Deployments"
+- **Metrics**: Check `/metrics` endpoint
+- **Health**: Monitor `/health` endpoint
+- **Usage**: Railway shows resource consumption in dashboard
+
+## 🌗️ Architecture
 
 ```
 ┌─────────────────┐         ┌──────────────────────────┐
