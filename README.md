@@ -133,9 +133,67 @@ HEALTH_CHECK_INTERVAL=30
    ```
 
 **Alternative Hosting Options**:
+- **Vercel (Hybrid)**: See section below for using your existing Vercel account
 - **Render.com**: Good free tier, easy deployment
 - **Google Cloud Run**: Generous free tier, requires Docker
 - **Fly.io**: Global deployment, more complex setup
+
+#### Option C: Vercel Hybrid Solution (If You Already Have Vercel)
+
+**⚠️ Important**: Vercel cannot directly host MCP servers due to:
+- 10-60 second timeout limits (even on Pro plans)
+- No support for persistent connections or SSE streaming beyond 300 seconds
+- Stateless architecture (no session persistence)
+
+However, you can use a **hybrid approach** with your existing Vercel account:
+
+**Solution 1: Vercel as API Gateway + External MCP**
+```javascript
+// vercel/api/poe-proxy.js
+export default async function handler(req, res) {
+  // Proxy requests to your Railway/Render MCP server
+  const response = await fetch('https://your-mcp.railway.app/api/poe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req.body)
+  });
+  const data = await response.json();
+  res.status(200).json(data);
+}
+```
+
+**Solution 2: Stateless POE Endpoints on Vercel**
+```python
+# api/poe-query.py (Vercel Python runtime)
+from http.server import BaseHTTPRequestHandler
+import json
+from poe_client.poe_api import PoeClient
+
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        # Quick, stateless POE queries only
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+        data = json.loads(post_data)
+        
+        client = PoeClient(api_key=os.environ['POE_API_KEY'])
+        result = client.send_message(
+            bot=data['model'],
+            message=data['prompt'],
+            timeout=9  # Stay under Vercel's 10s limit
+        )
+        
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps({'response': result}).encode())
+```
+
+**Solution 3: Best Practice - Use Vercel for Frontend Only**
+1. Keep your Next.js/React app on Vercel
+2. Deploy MCP server on Railway (free) or Render
+3. Connect directly from Warp to the MCP server
+4. Use Vercel for documentation, dashboard, or monitoring UI
 
 ## 🎮 Usage in Warp Terminal
 
