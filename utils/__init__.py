@@ -4,6 +4,7 @@ Utilities for the Poe Proxy MCP server.
 
 from .logging_utils import (
     setup_logging,
+    logger,
     PoeProxyError,
     AuthenticationError,
     PoeApiError,
@@ -18,6 +19,7 @@ from .config import (
 
 __all__ = [
     "setup_logging",
+    "logger",
     "PoeProxyError",
     "AuthenticationError",
     "PoeApiError",
