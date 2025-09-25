@@ -31,6 +31,9 @@ python run_sse_server.py [port]  # defaults to port 8000
 
 # Enhanced server with Warp agent integration
 python enhanced_poe_server.py
+
+# Phase 2 production server with full Warp integration
+python poe_server_phase2.py
 ```
 
 ### Testing
@@ -60,11 +63,12 @@ pip install -r requirements.txt
 ## Code Architecture
 
 ### Server Variants
-The project has three main server implementations:
+The project has four main server implementations:
 
 1. **`poe_server.py`** - Standard FastMCP server with basic POE proxy functionality
 2. **`enhanced_poe_server.py`** - Extended version with Warp terminal integration for automatic action execution
 3. **`poe_server_v2.py`** - SDK-compatible version designed for the official MCP Python SDK
+4. **`poe_server_phase2.py`** - Production-ready server with full Warp integration, rate limiting, and OpenAI compatibility
 
 ### Core Components
 
@@ -80,19 +84,31 @@ Enhanced server adds:
 - `ask_poe_with_actions` - Queries with automatic terminal command execution
 - `ask_with_attachment_and_actions` - File queries with action execution
 
+Phase 2 server (`poe_server_phase2.py`) adds:
+- `ask_poe_with_warp_context` - Queries with full Warp terminal context extraction
+- `stream_poe_to_warp` - Real-time streaming responses with SSE format
+- `execute_warp_action` - Execute terminal commands with safety validation
+- `health_check` - Server health status endpoint
+- `get_metrics` - Performance metrics and usage statistics
+- `reset_metrics` - Reset collected metrics
+
 #### Package Organization
 ```
 poe_client/           # POE API client implementation
 ├── poe_api.py       # Core PoeClient class
 ├── session.py       # SessionManager for conversation context
 ├── claude_compat.py # Claude-specific formatting and protocol handling
-└── file_utils.py    # File validation and processing utilities
+├── file_utils.py    # File validation and processing utilities
+├── rate_limiter.py  # Exponential backoff rate limiting with request queuing
+├── streaming.py     # SSE streaming with delta content and error recovery
+└── openai_client.py # OpenAI SDK-compatible client
 
 utils/               # Shared utilities
 ├── config.py        # Configuration management using Pydantic
 └── logging_utils.py # Logging setup and custom exception classes
 
 warp_agent_tools.py  # Warp terminal integration tools
+warp_context_handler.py # Phase 2 Warp context extraction and formatting
 examples/            # Usage examples and web client
 tests/               # Unit tests
 ```
@@ -123,6 +139,35 @@ The enhanced server includes:
 - Editor integration (VS Code, vim, nano)
 - Action parsing from POE model responses
 - Structured results with success/error reporting
+
+#### Phase 2 Production Features
+The Phase 2 server (`poe_server_phase2.py`) provides:
+
+**Rate Limiting & Reliability:**
+- Exponential backoff with jitter (500 RPM limit)
+- Request queuing with priority levels
+- Automatic retry with `Retry-After` header support
+- Circuit breaker pattern for failing endpoints
+
+**Warp Terminal Context:**
+- Extracts terminal output, selections, CWD, git state
+- Processes environment variables and references
+- Handles file attachments with multimodal support
+- Formats output with Warp-specific blocks (commands, files, images, videos)
+
+**Streaming Enhancements:**
+- Server-Sent Events (SSE) format support
+- Delta content streaming for incremental updates
+- Chunk buffering and aggregation
+- Stream error recovery and reconnection
+- Real-time tool call streaming
+
+**Production Readiness:**
+- Health check endpoint with detailed status
+- Comprehensive metrics collection (request count, latency, errors)
+- Structured JSON logging with correlation IDs
+- Graceful shutdown handling
+- Resource cleanup on termination
 
 ### Security Considerations
 - Basic command validation prevents dangerous operations (`rm -rf /`, etc.)
@@ -179,6 +224,14 @@ Optional:
 - `MAX_FILE_SIZE_MB` - Maximum file upload size (default: 10)
 - `SESSION_EXPIRY_MINUTES` - Session lifetime (default: 60)
 
+Phase 2 Server Additional:
+- `OPENAI_API_KEY` - OpenAI API key for SDK client (optional, uses POE if not set)
+- `RATE_LIMIT_RPM` - Requests per minute limit (default: 500)
+- `MAX_RETRIES` - Maximum retry attempts for failed requests (default: 3)
+- `STREAM_BUFFER_SIZE` - SSE stream buffer size in KB (default: 64)
+- `METRICS_ENABLED` - Enable metrics collection (default: true)
+- `HEALTH_CHECK_INTERVAL` - Health check interval in seconds (default: 30)
+
 ## Bot Names
 Standard bot names for POE models:
 - `claude` - Claude models (automatically detects specific version)
@@ -188,3 +241,57 @@ Standard bot names for POE models:
 - `perplexity` - Perplexity models
 
 The server maps these to the actual POE bot identifiers automatically.
+
+## Phase 2 Usage Examples
+
+### Query with Warp Context
+```python
+# The server automatically extracts context from Warp
+result = await server.ask_poe_with_warp_context(
+    prompt="Explain the current terminal state",
+    model="claude",
+    warp_context={  # Automatically provided by Warp
+        "terminal_output": "...",
+        "selected_text": "...",
+        "cwd": "/path/to/project",
+        "git_state": {...}
+    }
+)
+```
+
+### Streaming Response
+```python
+# Stream POE responses directly to Warp terminal
+async for chunk in server.stream_poe_to_warp(
+    prompt="Generate a Python script",
+    model="gpt",
+    stream=True
+):
+    # Chunks are formatted for Warp display
+    print(chunk.delta_content)
+```
+
+### Execute Terminal Action
+```python
+# Execute commands extracted from POE responses
+result = await server.execute_warp_action(
+    action_type="command",
+    content="ls -la",
+    validate=True  # Safety validation enabled
+)
+```
+
+### Health Monitoring
+```python
+# Check server health
+health = await server.health_check()
+print(f"Status: {health.status}")
+print(f"Uptime: {health.uptime_seconds}s")
+print(f"Active sessions: {health.active_sessions}")
+
+# Get metrics
+metrics = await server.get_metrics()
+print(f"Total requests: {metrics.total_requests}")
+print(f"Error rate: {metrics.error_rate:.2%}")
+print(f"Avg latency: {metrics.avg_latency_ms}ms")
+```
